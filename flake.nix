@@ -41,6 +41,30 @@
             cargoArtifacts = craneLib.buildDepsOnly commonArgs;
           }
         );
+
+        usbip-macos-app = pkgs.stdenvNoCC.mkDerivation {
+          pname = "usbip-macos-app";
+          inherit (usbip-macos) version;
+          dontUnpack = true;
+          installPhase = ''
+            contents=$out/Applications/usbip.app/Contents
+            mkdir -p $contents/MacOS $contents/Resources
+            cp ${usbip-macos}/bin/usbip-macos $contents/MacOS/
+            cp ${./packaging/AppIcon/Assets.car} $contents/Resources/Assets.car
+            cp ${./packaging/AppIcon/AppIcon.icns} $contents/Resources/AppIcon.icns
+            cp ${pkgs.replaceVars ./packaging/Info.plist { inherit (usbip-macos) version; }} $contents/Info.plist
+          '';
+        };
+
+        package-app = pkgs.writeShellApplication {
+          name = "package-app";
+          runtimeEnv = {
+            APP = "${usbip-macos-app}/Applications/usbip.app";
+            ENTITLEMENTS = "${./entitlements.plist}";
+            VERSION = usbip-macos.version;
+          };
+          text = builtins.readFile ./packaging/package-app.sh;
+        };
       in
       {
         formatter = pkgs.nixpkgs-fmt;
@@ -49,7 +73,18 @@
           inherit usbip-macos;
         };
 
-        packages.default = usbip-macos;
+        packages = {
+          default = usbip-macos;
+        } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
+          app = usbip-macos-app;
+        };
+
+        apps = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
+          package = {
+            type = "app";
+            program = "${package-app}/bin/package-app";
+          };
+        };
 
         devShells.default = craneLib.devShell {
           checks = self.checks.${system};

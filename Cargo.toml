@@ -17,6 +17,7 @@ simple_logger = { version = "5.2", default-features = false, features = ["stderr
 objc2 = { version = "0.6", features = ["relax-sign-encoding"] } # https://github.com/madsmtm/objc2/issues/754
 block2 = "0.6"
 dispatch2 = "0.3"
+objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
 objc2-io-usb-host = "0.3"
 

@@ -2,19 +2,23 @@ use std::process::ExitCode;
 
 use anyhow::{anyhow, Context, Result};
 use simple_logger::SimpleLogger;
-use tokio::net::TcpStream;
+use tokio::{net::TcpStream, runtime::Runtime};
 use usbip_macos::{
     cli::{self, Action, Selector},
     client,
 };
 
+#[cfg(target_os = "macos")]
+mod gui;
+
 fn main() -> ExitCode {
     init_logger();
+    #[cfg(target_os = "macos")]
+    if launched_as_app() {
+        return gui::run();
+    }
     let args = cli::parse(&cli::command().get_matches());
-    let runtime = match tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-    {
+    let runtime = match runtime() {
         Ok(rt) => rt,
         Err(e) => {
             eprintln!("error: failed to start runtime: {e}");
@@ -37,6 +41,23 @@ fn main() -> ExitCode {
     }
 }
 
+fn runtime() -> std::io::Result<Runtime> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+}
+
+/// Opened from Finder or `open`, the bundle's executable gets no arguments; from a shell it
+/// stays a CLI.
+#[cfg(target_os = "macos")]
+fn launched_as_app() -> bool {
+    std::env::args_os().len() == 1
+        && std::env::current_exe().is_ok_and(|exe| {
+            exe.parent()
+                .is_some_and(|dir| dir.ends_with("Contents/MacOS"))
+        })
+}
+
 fn init_logger() {
     let default_level = if cfg!(debug_assertions) {
         log::LevelFilter::Debug
@@ -51,11 +72,9 @@ fn init_logger() {
 }
 
 async fn connect(address: &str) -> Result<TcpStream> {
-    let stream = TcpStream::connect(address)
+    client::connect(address)
         .await
-        .with_context(|| format!("connecting to {address}"))?;
-    stream.set_nodelay(true)?;
-    Ok(stream)
+        .with_context(|| format!("connecting to {address}"))
 }
 
 async fn list(address: &str) -> Result<()> {
@@ -75,21 +94,9 @@ async fn list(address: &str) -> Result<()> {
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
-async fn import(address: &str, selector: &Selector) -> Result<client::Session> {
-    let devices = client::list_devices(&mut connect(address).await?).await?;
-    let device = selector
-        .find(&devices)
-        .ok_or_else(|| anyhow!("no exported device matches {selector:?}"))?;
-    // The server closes the connection after a device list, so importing needs a new one.
-    let session = client::import(connect(address).await?, &device.busid).await?;
-    log::info!("imported {:?}", session.device());
-    Ok(session)
-}
-
 #[cfg(not(target_os = "macos"))]
 fn attach(
-    _runtime: &tokio::runtime::Runtime,
+    _runtime: &Runtime,
     _address: &str,
     _selector: &Selector,
     _wait_for_enter: bool,
@@ -99,48 +106,43 @@ fn attach(
 
 #[cfg(target_os = "macos")]
 fn attach(
-    runtime: &tokio::runtime::Runtime,
+    runtime: &Runtime,
     address: &str,
     selector: &Selector,
     wait_for_enter: bool,
 ) -> Result<()> {
-    use std::{io::Write, time::Duration};
+    use std::io::Write;
     use tokio::signal::unix::{signal, SignalKind};
-    use usbip_macos::host::Controller;
+    use usbip_macos::attach::Attachment;
 
-    let session = runtime.block_on(import(address, selector))?;
-    let controller =
-        Controller::new(session.clone(), runtime.handle().clone()).map_err(|e| anyhow!(e))?;
+    let attachment = runtime.block_on(async {
+        let devices = client::list_devices(&mut connect(address).await?).await?;
+        let device = selector
+            .find(&devices)
+            .ok_or_else(|| anyhow!("no exported device matches {selector:?}"))?;
+        // The server closes the connection after a device list, so importing needs a new one.
+        let attachment = Attachment::import(address, &device.busid).await?;
+        log::info!("imported {:?}", attachment.session().device());
+        anyhow::Ok(attachment)
+    })?;
 
-    runtime.block_on(controller.wait_powered());
     if wait_for_enter {
         print!("Press Enter to connect the device...");
         std::io::stdout().flush()?;
         std::io::stdin().read_line(&mut String::new())?;
     }
-    controller.set_connected(true);
+    attachment.connect();
 
     let outcome = runtime.block_on(async {
         let mut term = signal(SignalKind::terminate())?;
         tokio::select! {
             _ = tokio::signal::ctrl_c() => Ok(()),
             _ = term.recv() => Ok(()),
-            reason = session.closed() => Err(anyhow!("connection lost: {reason}")),
+            reason = attachment.closed() => Err(anyhow!("connection lost: {reason}")),
         }
     });
 
     log::info!("detaching");
-    controller.set_connected(false);
-    session.unlink_all();
-    runtime.block_on(async {
-        let _ = tokio::time::timeout(Duration::from_secs(1), async {
-            while session.pending() > 0 && !session.is_closed() {
-                tokio::time::sleep(Duration::from_millis(10)).await;
-            }
-        })
-        .await;
-    });
-    drop(controller);
-    session.close();
+    runtime.block_on(attachment.detach());
     outcome
 }
