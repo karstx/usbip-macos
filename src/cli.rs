@@ -95,11 +95,7 @@ pub struct Args {
 pub fn parse(matches: &ArgMatches) -> Args {
     let host = matches.get_one::<String>("remote").expect("required");
     let port = *matches.get_one::<u16>("tcp-port").expect("defaulted");
-    let address = if host.contains(':') && !host.starts_with('[') {
-        format!("[{host}]:{port}")
-    } else {
-        format!("{host}:{port}")
-    };
+    let address = address(host, port);
     let action = match matches.subcommand() {
         Some(("attach", m)) => {
             let selector = if let Some(busid) = m.get_one::<String>("busid") {
@@ -120,6 +116,34 @@ pub fn parse(matches: &ArgMatches) -> Args {
         _ => Action::List,
     };
     Args { address, action }
+}
+
+pub const DEFAULT_PORT: u16 = 3240;
+
+pub fn address(host: &str, port: u16) -> String {
+    if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
+/// Turns `host`, `host:port`, an IPv6 address or `[v6]:port` into a connectable address.
+pub fn server_address(input: &str) -> Option<String> {
+    let input = input.trim();
+    if input.is_empty() {
+        return None;
+    }
+    if input.parse::<std::net::SocketAddr>().is_ok() {
+        return Some(input.into());
+    }
+    if let Some((host, port)) = input.rsplit_once(':') {
+        if !host.contains(':') && port.parse::<u16>().is_ok() {
+            return Some(input.into());
+        }
+    }
+    let host = input.trim_start_matches('[').trim_end_matches(']');
+    Some(address(host, DEFAULT_PORT))
 }
 
 pub fn try_parse<I, T>(args: I) -> Result<Args, clap::Error>

@@ -108,3 +108,15 @@ fn selector_matching() {
     .find(&devices)
     .is_none());
 }
+
+#[test]
+fn server_addresses() {
+    use usbip_macos::cli::server_address;
+    assert_eq!(server_address("  "), None);
+    assert_eq!(server_address("host").unwrap(), "host:3240");
+    assert_eq!(server_address(" host:1234 ").unwrap(), "host:1234");
+    assert_eq!(server_address("10.0.0.1").unwrap(), "10.0.0.1:3240");
+    assert_eq!(server_address("::1").unwrap(), "[::1]:3240");
+    assert_eq!(server_address("[::1]").unwrap(), "[::1]:3240");
+    assert_eq!(server_address("[::1]:1234").unwrap(), "[::1]:1234");
+}

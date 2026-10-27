@@ -1,18 +1,27 @@
+<img src="docs/icon.png" alt="usbip icon" width="128" height="128">
+
 # usbip-macos
 
 A [USB/IP](https://usbip.sourceforge.net/) client for macOS.
 
-## Disclaimer
-
-This is highly experimental. Use at your own risk.
-
 ## Permissions
 
 Because this tool uses `IOUSBHostControllerInterface` it either needs to be signed with the
-`com.apple.developer.usb.host-controller-interface` entitlement (which I don't have) or run as
+`com.apple.developer.usb.host-controller-interface` entitlement (which I don't have yet) or run as
 root with SIP disabled and the `amfi_get_out_of_my_way=1` boot-arg set.
 
 ## Usage
+
+### Mac app
+
+Opening `usbip.app` puts an icon in the menu bar. Use **Set Server…** to pick the server,
+then click an exported device to attach it and click it again to detach it. Quitting detaches
+everything.
+
+The app runs as your user, so it only works in a build signed with the entitlement. Without one,
+use the CLI as root.
+
+### CLI
 
 ```sh
 sudo usbip-macos -r <server> list

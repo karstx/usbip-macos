@@ -17,6 +17,12 @@ use crate::protocol::{
     Reply, RetSubmit,
 };
 
+pub async fn connect(address: &str) -> std::io::Result<tokio::net::TcpStream> {
+    let stream = tokio::net::TcpStream::connect(address).await?;
+    stream.set_nodelay(true)?;
+    Ok(stream)
+}
+
 pub async fn list_devices<S>(stream: &mut S) -> protocol::Result<Vec<ExportedDevice>>
 where
     S: AsyncRead + AsyncWrite + Unpin,
