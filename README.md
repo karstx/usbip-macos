@@ -8,7 +8,7 @@ A [USB/IP](https://usbip.sourceforge.net/) client for macOS.
 
 Attaching a device uses `IOUSBHostControllerInterface`, which needs one of:
 
-- an app bundle signed with the `com.apple.developer.usb.host-controller-interface` entitlement and a provisioning profile that grants it (which I don't have yet)
+- an app bundle signed with the `com.apple.developer.usb.host-controller-interface` entitlement and a provisioning profile that grants it
 - SIP disabled, running as root
 - SIP disabled, the `amfi_get_out_of_my_way=1` boot-arg, and an ad-hoc signature claiming the entitlement: `codesign --force --sign - --entitlements entitlements.plist usbip.app`
 
@@ -26,6 +26,12 @@ sudo usbip-macos -r <server> attach --busid 1-1.4
 ```
 
 The device stays attached until you stop the client.
+
+The app bundle's executable is the same CLI when run with arguments:
+
+```sh
+/Applications/usbip.app/Contents/MacOS/usbip-macos -r <server> list
+```
 
 ## Limitations
 
