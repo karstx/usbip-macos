@@ -25,8 +25,6 @@ usbip-macos -r <server> list
 sudo usbip-macos -r <server> attach --busid 1-1.4
 ```
 
-The device stays attached until you stop the client.
-
 The app bundle's executable is the same CLI when run with arguments:
 
 ```sh
