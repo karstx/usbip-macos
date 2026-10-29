@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use usbip_macos::app::{device_kind, is_newer, retry_delay, DeviceKey};
+use usbip_macos::app::{is_newer, retry_delay, DeviceKey, Kind};
 use usbip_macos::protocol::{ExportedDevice, Interface, Speed};
 
 fn device(interfaces: &[(u8, u8, u8)]) -> ExportedDevice {
@@ -32,20 +32,15 @@ fn device(interfaces: &[(u8, u8, u8)]) -> ExportedDevice {
 
 #[test]
 fn kinds() {
-    assert_eq!(device_kind(&device(&[(3, 1, 1)])), "Keyboard");
-    assert_eq!(device_kind(&device(&[(3, 1, 2)])), "Mouse");
-    assert_eq!(device_kind(&device(&[(8, 6, 0x50)])), "Storage");
-    assert_eq!(
-        device_kind(&device(&[(0xff, 0, 0)])),
-        "Vendor-specific device"
-    );
-    assert_eq!(device_kind(&device(&[])), "USB device");
-    // CDC data interfaces say nothing about the device, so the control interface wins.
-    assert_eq!(
-        device_kind(&device(&[(0x0a, 0, 0), (2, 2, 1)])),
-        "Serial port"
-    );
-    assert_eq!(device_kind(&device(&[(0x0a, 0, 0)])), "USB device");
+    let kind = |interfaces: &[(u8, u8, u8)]| Kind::of(&device(interfaces));
+    assert_eq!(kind(&[(3, 1, 1)]), Kind::Keyboard);
+    assert_eq!(kind(&[(3, 1, 2)]), Kind::Mouse);
+    assert_eq!(kind(&[(8, 6, 0x50)]), Kind::Storage);
+    assert_eq!(kind(&[(0xff, 0, 0)]), Kind::VendorSpecific);
+    assert_eq!(kind(&[]), Kind::Other);
+    assert_eq!(kind(&[(0x0a, 0, 0), (2, 2, 1)]), Kind::Serial);
+    assert_eq!(kind(&[(0x0a, 0, 0)]), Kind::Other);
+    assert_eq!(Kind::Storage.label(), "Storage");
 }
 
 #[test]

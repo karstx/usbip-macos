@@ -7,7 +7,7 @@ use std::{
 
 use tokio::sync::watch;
 use usbip_macos::{
-    app::{device_kind, DeviceKey},
+    app::{DeviceKey, Kind},
     cli,
     protocol::ExportedDevice,
 };
@@ -94,7 +94,7 @@ impl Model {
                 .names
                 .get(&(d.id_vendor, d.id_product))
                 .cloned()
-                .unwrap_or_else(|| device_kind(d).into()),
+                .unwrap_or_else(|| Kind::of(d).label().into()),
             None => key.busid.clone(),
         }
     }

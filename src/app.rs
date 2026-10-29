@@ -4,34 +4,80 @@ use std::time::Duration;
 
 use crate::protocol::ExportedDevice;
 
-/// A short description of what the device is, from its interface classes.
-pub fn device_kind(device: &ExportedDevice) -> &'static str {
-    let interface = device
-        .interfaces
-        .iter()
-        .find(|i| i.class != 0x0a)
-        .or(device.interfaces.first());
-    let Some(i) = interface else {
-        return "USB device";
-    };
-    match (i.class, i.subclass, i.protocol) {
-        (0x03, _, 1) => "Keyboard",
-        (0x03, _, 2) => "Mouse",
-        (0x03, _, _) => "Input device",
-        (0x01, _, _) => "Audio device",
-        (0x02, 0x02, _) => "Serial port",
-        (0x02, 0x06 | 0x0d, _) => "Network adapter",
-        (0x02, _, _) => "Communications device",
-        (0x07, _, _) => "Printer",
-        (0x08, _, _) => "Storage",
-        (0x09, _, _) => "Hub",
-        (0x0b, _, _) => "Smart card reader",
-        (0x0e, _, _) => "Camera",
-        (0xe0, 0x01, 0x01) => "Bluetooth adapter",
-        (0xe0, _, _) => "Wireless controller",
-        (0xfe, 0x01, _) => "Firmware updater",
-        (0xff, _, _) => "Vendor-specific device",
-        _ => "USB device",
+/// What a device is, judged from its interface classes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Keyboard,
+    Mouse,
+    Input,
+    Audio,
+    Serial,
+    Network,
+    Communications,
+    Printer,
+    Storage,
+    Hub,
+    SmartCard,
+    Camera,
+    Bluetooth,
+    Wireless,
+    Firmware,
+    VendorSpecific,
+    Other,
+}
+
+impl Kind {
+    pub fn of(device: &ExportedDevice) -> Self {
+        // CDC data interfaces say nothing about the device, so the control interface decides.
+        let interface = device
+            .interfaces
+            .iter()
+            .find(|i| i.class != 0x0a)
+            .or(device.interfaces.first());
+        let Some(i) = interface else {
+            return Self::Other;
+        };
+        match (i.class, i.subclass, i.protocol) {
+            (0x03, _, 1) => Self::Keyboard,
+            (0x03, _, 2) => Self::Mouse,
+            (0x03, _, _) => Self::Input,
+            (0x01, _, _) => Self::Audio,
+            (0x02, 0x02, _) => Self::Serial,
+            (0x02, 0x06 | 0x0d, _) => Self::Network,
+            (0x02, _, _) => Self::Communications,
+            (0x07, _, _) => Self::Printer,
+            (0x08, _, _) => Self::Storage,
+            (0x09, _, _) => Self::Hub,
+            (0x0b, _, _) => Self::SmartCard,
+            (0x0e, _, _) => Self::Camera,
+            (0xe0, 0x01, 0x01) => Self::Bluetooth,
+            (0xe0, _, _) => Self::Wireless,
+            (0xfe, 0x01, _) => Self::Firmware,
+            (0xff, _, _) => Self::VendorSpecific,
+            _ => Self::Other,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Keyboard => "Keyboard",
+            Self::Mouse => "Mouse",
+            Self::Input => "Input device",
+            Self::Audio => "Audio device",
+            Self::Serial => "Serial port",
+            Self::Network => "Network adapter",
+            Self::Communications => "Communications device",
+            Self::Printer => "Printer",
+            Self::Storage => "Storage",
+            Self::Hub => "Hub",
+            Self::SmartCard => "Smart card reader",
+            Self::Camera => "Camera",
+            Self::Bluetooth => "Bluetooth adapter",
+            Self::Wireless => "Wireless controller",
+            Self::Firmware => "Firmware updater",
+            Self::VendorSpecific => "Vendor-specific device",
+            Self::Other => "USB device",
+        }
     }
 }
 

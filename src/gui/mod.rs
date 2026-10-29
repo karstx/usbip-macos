@@ -41,7 +41,10 @@ use tokio::{
     runtime::Runtime,
     signal::unix::{signal, SignalKind},
 };
-use usbip_macos::{app::DeviceKey, client};
+use usbip_macos::{
+    app::{DeviceKey, Kind},
+    client,
+};
 
 use settings::Settings;
 use state::{Model, Server, Shared, State};
@@ -51,6 +54,27 @@ const QUIT_TIMEOUT: Duration = Duration::from_secs(5);
 const SLEEP_TIMEOUT: Duration = Duration::from_secs(5);
 const UPDATE_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 const MESSAGE_WIDTH: usize = 60;
+
+fn kind_symbol(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Keyboard => "keyboard",
+        Kind::Mouse => "computermouse",
+        Kind::Input => "hand.point.up.left",
+        Kind::Audio => "hifispeaker",
+        Kind::Serial => "cable.connector.horizontal",
+        Kind::Network => "network",
+        Kind::Communications | Kind::Wireless => "antenna.radiowaves.left.and.right",
+        Kind::Printer => "printer",
+        Kind::Storage => "externaldrive",
+        Kind::Hub => "point.3.filled.connected.trianglepath.dotted",
+        Kind::SmartCard => "creditcard",
+        Kind::Camera => "web.camera",
+        Kind::Bluetooth => "wave.3.right",
+        Kind::Firmware => "arrow.down.circle",
+        Kind::VendorSpecific => "cpu",
+        Kind::Other => "cable.connector",
+    }
+}
 
 fn save_servers(model: &Model) {
     let inputs: Vec<String> = model.servers.iter().map(|s| s.input.clone()).collect();
@@ -383,17 +407,34 @@ impl App {
         }
     }
 
+    /// Titled with the product name learned from an earlier attach, with the vendor and product
+    /// ids below it. USB/IP carries no names, so a device never attached is titled with its ids,
+    /// with its class below.
     fn device_item(&self, model: &Model, key: &DeviceKey) -> Retained<NSMenuItem> {
-        let title = model.label(key);
+        let device = model.device(key);
+        let ids = device.map(|d| format!("{:04x}:{:04x}", d.id_vendor, d.id_product));
+        let name = device.and_then(|d| model.names.get(&(d.id_vendor, d.id_product)));
+        let kind = device.map_or(Kind::Other, Kind::of);
+        let (title, detail) = match (name, ids) {
+            (Some(name), Some(ids)) => (name.clone(), Some(ids)),
+            (None, Some(ids)) => (ids, Some(kind.label().to_string())),
+            _ => (key.busid.clone(), None),
+        };
         let link = model.links.get(key);
         let item = match link.map(|l| &l.state) {
             Some(State::Ejecting | State::Detaching) => self.item(&title, None, ""),
             _ => self.toggle_item(&title, key),
         };
-        let mut subtitle = key.busid.clone();
-        if let Some(d) = model.device(key) {
-            subtitle += &format!(" · {:04x}:{:04x}", d.id_vendor, d.id_product);
+        if let Some(image) = NSImage::imageWithSystemSymbolName_accessibilityDescription(
+            &NSString::from_str(kind_symbol(kind)),
+            Some(&NSString::from_str(kind.label())),
+        ) {
+            item.setImage(Some(&image));
         }
+        let mut subtitle = match detail {
+            Some(detail) => format!("{detail} · {}", key.busid),
+            None => key.busid.clone(),
+        };
         let state = match link.map(|l| &l.state) {
             None => None,
             Some(State::Attached) => {
