@@ -2,10 +2,12 @@ use std::{
     collections::{HashMap, VecDeque},
     future::Future,
     sync::{Arc, Mutex, MutexGuard},
+    time::Duration,
 };
 
 use bytes::BytesMut;
 use log::{debug, warn};
+use socket2::{SockRef, TcpKeepalive};
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader},
@@ -17,9 +19,20 @@ use crate::protocol::{
     Reply, RetSubmit,
 };
 
+/// Keepalive probes notice a server that vanished without closing the connection, which an
+/// idle device (a keyboard nobody types on) would otherwise never find out about.
+const KEEPALIVE_IDLE: Duration = Duration::from_secs(10);
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(5);
+const KEEPALIVE_RETRIES: u32 = 3;
+
 pub async fn connect(address: &str) -> std::io::Result<tokio::net::TcpStream> {
     let stream = tokio::net::TcpStream::connect(address).await?;
     stream.set_nodelay(true)?;
+    let keepalive = TcpKeepalive::new()
+        .with_time(KEEPALIVE_IDLE)
+        .with_interval(KEEPALIVE_INTERVAL)
+        .with_retries(KEEPALIVE_RETRIES);
+    SockRef::from(&stream).set_tcp_keepalive(&keepalive)?;
     Ok(stream)
 }
 

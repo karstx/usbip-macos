@@ -58,6 +58,11 @@ impl Attachment {
         &self.session
     }
 
+    /// Identifies this attachment's controller in the I/O Registry.
+    pub fn controller_uuid(&self) -> String {
+        self.controller.uuid()
+    }
+
     /// Plugs the device into the controller's port, which makes macOS enumerate it.
     pub fn connect(&self) {
         self.controller.set_connected(true);

@@ -135,6 +135,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
+name = "cc"
+version = "1.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86e055fa6e3e40ad6187ba25b6855eeb635d5271f8e0f0e1e9a5826b8d75bea0"
+dependencies = [
+ "find-msvc-tools",
+ "shlex",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -240,6 +250,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashmap"
+version = "5.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "978747c1d849a7d2ee5e8adc0159961c48fb7e5db2f06af6723b80123bb53856"
+dependencies = [
+ "cfg-if",
+ "hashbrown 0.14.5",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core",
+]
+
+[[package]]
 name = "deranged"
 version = "0.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -278,6 +301,12 @@ name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
+
+[[package]]
+name = "find-msvc-tools"
+version = "0.1.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c66915cc5391097de7a2b0b972e8505aa33c0df401fd3a6811dbdb32881ba48"
 
 [[package]]
 name = "fnv"
@@ -323,6 +352,12 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
+version = "0.14.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
+
+[[package]]
+name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
@@ -334,7 +369,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc4e190f5d26ca7051642629da2c52fc03bde85a03197c99408dcd291734c855"
 dependencies = [
  "equivalent",
- "hashbrown",
+ "hashbrown 0.17.1",
 ]
 
 [[package]]
@@ -522,7 +557,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a180dd8642fa45cdb7dd721cd4c11b1cadd4929ce112ebd8b9f5803cc79d536"
 dependencies = [
  "bitflags",
+ "block2",
  "dispatch2",
+ "libc",
  "objc2",
 ]
 
@@ -572,6 +609,18 @@ dependencies = [
  "objc2-core-foundation",
  "objc2-core-graphics",
  "objc2-io-surface",
+]
+
+[[package]]
+name = "objc2-disk-arbitration"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee6933800935dccff2b811f1c5b804eb9b3d3347face044712188624bf547b45"
+dependencies = [
+ "dispatch2",
+ "libc",
+ "objc2",
+ "objc2-core-foundation",
 ]
 
 [[package]]
@@ -643,6 +692,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-security"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "709fe137109bd1e8b5a99390f77a7d8b2961dafc1a1c5db8f2e60329ad6d895a"
+dependencies = [
+ "bitflags",
+ "block2",
+ "libc",
+ "objc2",
+ "objc2-core-foundation",
+]
+
+[[package]]
+name = "objc2-service-management"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b213642d6959cc6023ceb1217aa595eaaf09b8094ce95127c103cab611fe65e8"
+dependencies = [
+ "block2",
+ "objc2",
+ "objc2-core-foundation",
+ "objc2-foundation",
+ "objc2-security",
+]
+
+[[package]]
+name = "objc2-user-notifications"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9df9128cbbfef73cda168416ccf7f837b62737d748333bfe9ab71c245d76613e"
+dependencies = [
+ "bitflags",
+ "block2",
+ "objc2",
+ "objc2-foundation",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -653,6 +740,17 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
+
+[[package]]
+name = "oslog"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80d2043d1f61d77cb2f4b1f7b7b2295f40507f5f8e9d1c8bf10a1ca5f97a3969"
+dependencies = [
+ "cc",
+ "dashmap",
+ "log",
+]
 
 [[package]]
 name = "parking_lot"
@@ -854,6 +952,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "shlex"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "signal-hook-registry"
@@ -1065,10 +1169,17 @@ dependencies = [
  "nusb",
  "objc2",
  "objc2-app-kit",
+ "objc2-core-foundation",
+ "objc2-disk-arbitration",
  "objc2-foundation",
  "objc2-io-usb-host",
+ "objc2-security",
+ "objc2-service-management",
+ "objc2-user-notifications",
+ "oslog",
  "proptest",
  "simple_logger",
+ "socket2",
  "thiserror",
  "tokio",
 ]
