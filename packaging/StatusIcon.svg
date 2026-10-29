@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="332 170 360 680">
+  <!-- The app icon's glyph redrawn for the menu bar: heavier strokes, and the outer arc moved
+       out so the two arcs stay apart at 18pt. Used as a template image, so only alpha counts. -->
+  <g fill="none" stroke="#000" stroke-width="44" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M455.4 303.4 A80 80 0 0 1 568.6 303.4"/>
+    <path d="M398.9 246.9 A160 160 0 0 1 625.1 246.9"/>
+    <path d="M512 430 V745"/>
+    <path d="M512 640 L392 560 V515"/>
+    <path d="M512 575 L632 495 V460"/>
+    <path d="M512 360 L466 440 H558 Z" fill="#000" stroke-width="24"/>
+    <circle cx="512" cy="790" r="46" fill="#000" stroke="none"/>
+    <circle cx="392" cy="482" r="40" fill="#000" stroke="none"/>
+    <rect x="596" y="390" width="72" height="72" rx="8" fill="#000" stroke="none"/>
+  </g>
+</svg>

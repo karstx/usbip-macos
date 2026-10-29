@@ -355,6 +355,12 @@ impl Controller {
     pub fn set_connected(&self, connected: bool) {
         self.with_port(|port| unsafe { port.setConnected(connected) });
     }
+
+    /// The controller's UUID, which the kernel publishes on its user client as
+    /// `IOUSBHostControllerInterfaceUUID`.
+    pub fn uuid(&self) -> String {
+        unsafe { self.interface.uuid() }.UUIDString().to_string()
+    }
 }
 
 impl Drop for Controller {

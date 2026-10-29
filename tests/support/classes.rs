@@ -207,3 +207,236 @@ pub fn two_configurations() -> StdDevice<Fifo> {
         Fifo::default(),
     )
 }
+
+pub const PID_STORAGE: u16 = 0x735c;
+pub const STORAGE_BLOCK: usize = 512;
+
+enum BotPhase {
+    Command,
+    DataIn(Vec<u8>),
+    DataOut { offset: usize, remaining: usize },
+    Status,
+}
+
+struct Bot {
+    phase: BotPhase,
+    tag: u32,
+    expected: u32,
+    transferred: u32,
+    failed: bool,
+    /// Sense key, ASC and ASCQ for the next REQUEST SENSE.
+    sense: [u8; 3],
+    /// Bumped by a reset. The test server keeps serving a dropped client's URBs, so an IN
+    /// transfer from before the reset must not take data meant for the new one.
+    generation: u64,
+}
+
+/// A Bulk-Only Transport SCSI disk held in memory. It understands the commands macOS sends to
+/// mount, read and write a volume and fails the rest with ILLEGAL REQUEST.
+pub struct Storage {
+    disk: Mutex<Vec<u8>>,
+    bot: Mutex<Bot>,
+    ready: Notify,
+}
+
+impl Storage {
+    pub fn new(bytes: usize) -> Self {
+        Self {
+            disk: Mutex::new(vec![0; bytes]),
+            bot: Mutex::new(Bot {
+                phase: BotPhase::Command,
+                tag: 0,
+                expected: 0,
+                transferred: 0,
+                failed: false,
+                sense: [0; 3],
+                generation: 0,
+            }),
+            ready: Notify::new(),
+        }
+    }
+
+    fn reset(&self) {
+        let mut bot = self.bot.lock().unwrap();
+        bot.phase = BotPhase::Command;
+        bot.generation += 1;
+        drop(bot);
+        self.ready.notify_waiters();
+    }
+
+    fn command(&self, bot: &mut Bot, cdb: &[u8]) {
+        let blocks = (self.disk.lock().unwrap().len() / STORAGE_BLOCK) as u32;
+        let lba = u32::from_be_bytes([cdb[2], cdb[3], cdb[4], cdb[5]]) as usize;
+        let count = u16::from_be_bytes([cdb[7], cdb[8]]) as usize;
+        bot.failed = false;
+        bot.phase = match cdb[0] {
+            // TEST UNIT READY, START STOP UNIT, PREVENT ALLOW MEDIUM REMOVAL, SYNCHRONIZE CACHE
+            0x00 | 0x1b | 0x1e | 0x35 => BotPhase::Status,
+            // REQUEST SENSE
+            0x03 => {
+                let mut sense = vec![0; 18];
+                sense[0] = 0x70;
+                sense[2] = bot.sense[0];
+                sense[7] = 10;
+                sense[12] = bot.sense[1];
+                sense[13] = bot.sense[2];
+                bot.sense = [0; 3];
+                BotPhase::DataIn(sense)
+            }
+            // INQUIRY
+            0x12 => {
+                let mut inquiry = vec![0, 0x80, 4, 2, 31, 0, 0, 0];
+                inquiry.extend(b"usbip   Test Disk       1.0 ");
+                BotPhase::DataIn(inquiry)
+            }
+            // MODE SENSE (6) and (10), no pages and not write protected
+            0x1a => BotPhase::DataIn(vec![3, 0, 0, 0]),
+            0x5a => BotPhase::DataIn(vec![0, 6, 0, 0, 0, 0, 0, 0]),
+            // READ FORMAT CAPACITIES
+            0x23 => {
+                let mut caps = vec![0, 0, 0, 8];
+                caps.extend(blocks.to_be_bytes());
+                caps.extend([2, 0, (STORAGE_BLOCK >> 8) as u8, STORAGE_BLOCK as u8]);
+                BotPhase::DataIn(caps)
+            }
+            // READ CAPACITY (10)
+            0x25 => {
+                let mut caps = (blocks - 1).to_be_bytes().to_vec();
+                caps.extend((STORAGE_BLOCK as u32).to_be_bytes());
+                BotPhase::DataIn(caps)
+            }
+            // READ (10)
+            0x28 => {
+                let start = lba * STORAGE_BLOCK;
+                let end = start + count * STORAGE_BLOCK;
+                let disk = self.disk.lock().unwrap();
+                BotPhase::DataIn(disk.get(start..end).unwrap_or_default().to_vec())
+            }
+            // WRITE (10)
+            0x2a => BotPhase::DataOut {
+                offset: lba * STORAGE_BLOCK,
+                remaining: count * STORAGE_BLOCK,
+            },
+            _ => {
+                bot.failed = true;
+                bot.sense = [5, 0x20, 0];
+                if bot.expected > 0 {
+                    BotPhase::DataIn(Vec::new())
+                } else {
+                    BotPhase::Status
+                }
+            }
+        };
+        if let BotPhase::DataIn(data) = &mut bot.phase {
+            data.truncate(bot.expected as usize);
+        }
+    }
+
+    fn csw(bot: &mut Bot) -> Vec<u8> {
+        let mut csw = b"USBS".to_vec();
+        csw.extend(bot.tag.to_le_bytes());
+        csw.extend(bot.expected.saturating_sub(bot.transferred).to_le_bytes());
+        csw.push(u8::from(bot.failed));
+        bot.phase = BotPhase::Command;
+        csw
+    }
+}
+
+impl Function for Storage {
+    fn control(&self, urb: &Urb) -> Option<Outcome> {
+        match (urb.request_type(), urb.request()) {
+            // GET MAX LUN
+            (0xa1, 0xfe) => Some(reply(vec![0], urb)),
+            // Bulk-Only Mass Storage Reset
+            (0x21, 0xff) => {
+                self.reset();
+                Some(ack())
+            }
+            _ => None,
+        }
+    }
+
+    fn set_configuration(&self, _value: u8) {
+        self.reset();
+    }
+
+    fn transfer(self: Arc<Self>, urb: Urb) -> Handled {
+        let this = self;
+        Box::pin(async move {
+            if !urb.is_in() {
+                let mut bot = this.bot.lock().unwrap();
+                match bot.phase {
+                    BotPhase::DataOut { offset, remaining } => {
+                        let n = remaining.min(urb.data.len());
+                        if let Some(dst) = this.disk.lock().unwrap().get_mut(offset..offset + n) {
+                            dst.copy_from_slice(&urb.data[..n]);
+                        }
+                        bot.transferred += n as u32;
+                        bot.phase = if remaining > n {
+                            BotPhase::DataOut {
+                                offset: offset + n,
+                                remaining: remaining - n,
+                            }
+                        } else {
+                            BotPhase::Status
+                        };
+                    }
+                    _ if urb.data.len() == 31 && urb.data.starts_with(b"USBC") => {
+                        bot.tag = u32::from_le_bytes(urb.data[4..8].try_into().unwrap());
+                        bot.expected = u32::from_le_bytes(urb.data[8..12].try_into().unwrap());
+                        bot.transferred = 0;
+                        let mut cdb = [0; 16];
+                        cdb.copy_from_slice(&urb.data[15..31]);
+                        this.command(&mut bot, &cdb);
+                    }
+                    _ => return Outcome::Complete(Completion::status(-EPIPE)),
+                }
+                drop(bot);
+                this.ready.notify_waiters();
+                return Outcome::Complete(Completion::written(urb.data.len() as u32));
+            }
+            let generation = this.bot.lock().unwrap().generation;
+            loop {
+                let ready = this.ready.notified();
+                {
+                    let mut bot = this.bot.lock().unwrap();
+                    if bot.generation != generation {
+                        return Outcome::Complete(Completion::status(-EPIPE));
+                    }
+                    match &mut bot.phase {
+                        BotPhase::DataIn(data) => {
+                            let n = data.len().min(urb.length as usize);
+                            let chunk: Vec<u8> = data.drain(..n).collect();
+                            if data.is_empty() {
+                                bot.phase = BotPhase::Status;
+                            }
+                            bot.transferred += n as u32;
+                            return Outcome::Complete(Completion::ok(chunk));
+                        }
+                        BotPhase::Status => {
+                            return Outcome::Complete(Completion::ok(Self::csw(&mut bot)))
+                        }
+                        _ => {}
+                    }
+                }
+                ready.await;
+            }
+        })
+    }
+}
+
+/// A high-speed Bulk-Only mass storage device backed by `bytes` of RAM.
+pub fn storage(bytes: usize) -> StdDevice<Storage> {
+    let mut body = interface(0, 0, 2, [8, 6, 0x50]);
+    body.extend(endpoint(0x01, 2, 512, 0));
+    body.extend(endpoint(0x81, 2, 512, 0));
+    StdDevice::new(
+        Descriptors {
+            device: device_descriptor(0x0200, [0, 0, 0], 64, VID, PID_STORAGE, 1),
+            configurations: vec![configuration(1, &body)],
+            strings: vec!["usbip-macos tests".into(), "Disk".into(), "DISK1".into()],
+            ..Default::default()
+        },
+        Storage::new(bytes),
+    )
+}

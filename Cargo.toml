@@ -12,6 +12,7 @@ anyhow = "1"
 thiserror = "2"
 log = { version = "0.4", features = ["max_level_trace", "release_max_level_debug"] }
 simple_logger = { version = "5.2", default-features = false, features = ["stderr", "colors", "timestamps"] }
+socket2 = { version = "0.6", features = ["all"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = { version = "0.6", features = ["relax-sign-encoding"] } # https://github.com/madsmtm/objc2/issues/754
@@ -19,7 +20,21 @@ block2 = "0.6"
 dispatch2 = "0.3"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
+objc2-core-foundation = "0.3"
+objc2-disk-arbitration = "0.3"
 objc2-io-usb-host = "0.3"
+objc2-security = "0.3"
+objc2-service-management = "0.3"
+# The defaults pull in CoreLocation for location triggers.
+objc2-user-notifications = { version = "0.3", default-features = false, features = [
+    "std",
+    "block2",
+    "UNNotificationContent",
+    "UNNotificationRequest",
+    "UNNotificationTrigger",
+    "UNUserNotificationCenter",
+] }
+oslog = "0.2"
 
 [dev-dependencies]
 proptest = "1"

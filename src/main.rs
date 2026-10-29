@@ -12,11 +12,12 @@ use usbip_macos::{
 mod gui;
 
 fn main() -> ExitCode {
-    init_logger();
     #[cfg(target_os = "macos")]
     if launched_as_app() {
+        init_app_logger();
         return gui::run();
     }
+    init_logger();
     let args = cli::parse(&cli::command().get_matches());
     let runtime = match runtime() {
         Ok(rt) => rt,
@@ -58,17 +59,30 @@ fn launched_as_app() -> bool {
         })
 }
 
-fn init_logger() {
-    let default_level = if cfg!(debug_assertions) {
+fn default_log_level() -> log::LevelFilter {
+    if cfg!(debug_assertions) {
         log::LevelFilter::Debug
     } else {
         log::LevelFilter::Warn
-    };
+    }
+}
+
+fn init_logger() {
     let _ = SimpleLogger::new()
         .with_utc_timestamps()
-        .with_level(default_level)
+        .with_level(default_log_level())
         .env()
         .init();
+}
+
+/// The app has no terminal, so it logs to the unified log, where Console.app shows it.
+#[cfg(target_os = "macos")]
+fn init_app_logger() {
+    gui::logger::init(if cfg!(debug_assertions) {
+        log::LevelFilter::Debug
+    } else {
+        log::LevelFilter::Info
+    });
 }
 
 async fn connect(address: &str) -> Result<TcpStream> {

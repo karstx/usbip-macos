@@ -23,7 +23,11 @@
         });
 
         commonArgs = {
-          src = craneLib.cleanCargoSource ./.;
+          # The app embeds its menu bar icons, which cleanCargoSource alone would drop.
+          src = pkgs.lib.cleanSourceWith {
+            src = ./.;
+            filter = path: type: pkgs.lib.hasSuffix ".svg" path || craneLib.filterCargoSources path type;
+          };
           strictDeps = true;
 
           # .cargo/config.toml runs tests through sudo on macOS, which the build sandbox lacks.
