@@ -36,6 +36,7 @@
 
           buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
             pkgs.apple-sdk
+            (pkgs.darwinMinVersionHook "12.0")
           ];
         };
 
@@ -82,10 +83,10 @@
             exe=$contents/MacOS/usbip-macos
             cp ${usbip-macos}/bin/usbip-macos $exe
             ${useSystemLibraries "$exe"}
-            # Info.plist promises macOS 14, the oldest release the app has been tested on.
+            # Info.plist promises macOS 12, the oldest release the app has been tested on.
             minos=$(otool -l $exe | awk '/LC_BUILD_VERSION/ { found = 1 } found && $1 == "minos" { print $2; exit }')
-            if [ "$minos" != 14.0 ]; then
-              echo "$exe needs macOS $minos, but Info.plist says 14.0" >&2
+            if [ "$minos" != 12.0 ]; then
+              echo "$exe needs macOS $minos, but Info.plist says 12.0" >&2
               exit 1
             fi
             cp ${./packaging/AppIcon/Assets.car} $contents/Resources/Assets.car

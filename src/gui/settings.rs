@@ -232,6 +232,7 @@ impl Settings {
                 mtm,
             )
         };
+        login.setEnabled(system::can_open_at_login());
         let log_scroll = NSTextView::scrollableTextView(mtm);
         let log = log_scroll
             .documentView()

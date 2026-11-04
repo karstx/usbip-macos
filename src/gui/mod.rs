@@ -28,14 +28,14 @@ use objc2::{
 };
 use objc2_app_kit::{
     NSAlert, NSAlertFirstButtonReturn, NSApplication, NSApplicationActivationPolicy,
-    NSApplicationDelegate, NSApplicationTerminateReply, NSControlStateValueMixed,
-    NSControlStateValueOn, NSImage, NSMenu, NSMenuDelegate, NSMenuItem, NSStatusBar, NSStatusItem,
-    NSTextField, NSVariableStatusItemLength, NSWorkspace, NSWorkspaceDidWakeNotification,
+    NSApplicationDelegate, NSApplicationTerminateReply, NSColor, NSControlStateValueMixed,
+    NSControlStateValueOn, NSFont, NSFontAttributeName, NSForegroundColorAttributeName, NSImage,
+    NSMenu, NSMenuDelegate, NSMenuItem, NSStatusBar, NSStatusItem, NSTextField, NSVariableStatusItemLength, NSWorkspace, NSWorkspaceDidWakeNotification,
     NSWorkspaceWillSleepNotification,
 };
 use objc2_foundation::{
-    ns_string, NSData, NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRect, NSRunLoop,
-    NSSize, NSString, NSURL,
+    ns_string, NSData, NSDictionary, NSMutableAttributedString, NSNotification, NSObject,
+    NSObjectProtocol, NSPoint, NSRect, NSRunLoop, NSSize, NSString, NSURL,
 };
 use tokio::{
     runtime::Runtime,
@@ -101,7 +101,13 @@ fn redraw() {
 /// An accessory app has to bring itself forward before showing a window, or the window opens
 /// behind other apps without keyboard focus.
 fn come_forward(mtm: MainThreadMarker) {
-    NSApplication::sharedApplication(mtm).activate();
+    let app = NSApplication::sharedApplication(mtm);
+    if system::macos_at_least(14, 0) {
+        app.activate();
+    } else {
+        #[allow(deprecated)]
+        app.activateIgnoringOtherApps(true);
+    }
 }
 
 /// Runs `f` on the main thread from the run loop rather than from a main queue block. Anything
@@ -365,10 +371,11 @@ impl App {
             menu.addItem(&self.item("Add Server…", Some(sel!(addServer:)), ""));
         }
         for server in &model.servers {
-            menu.addItem(&NSMenuItem::sectionHeaderWithTitle(
-                &NSString::from_str(&server.input),
-                mtm,
-            ));
+            menu.addItem(&if system::macos_at_least(14, 0) {
+                NSMenuItem::sectionHeaderWithTitle(&NSString::from_str(&server.input), mtm)
+            } else {
+                self.item(&server.input, None, "")
+            });
             let mut busids: Vec<&str> = Vec::new();
             match &server.devices {
                 None => menu.addItem(&self.status_line("Loading…")),
@@ -457,7 +464,11 @@ impl App {
             item.setToolTip(Some(&NSString::from_str(&state)));
             subtitle += &format!("\n{state}");
         }
-        item.setSubtitle(Some(&NSString::from_str(&subtitle)));
+        if system::macos_at_least(14, 4) {
+            item.setSubtitle(Some(&NSString::from_str(&subtitle)));
+        } else {
+            item.setAttributedTitle(Some(&two_line_title(&title, &subtitle)));
+        }
         item
     }
 
@@ -882,4 +893,27 @@ pub fn run() -> ExitCode {
     delegate.check_for_updates();
     app.run();
     ExitCode::SUCCESS
+}
+
+/// A title over a smaller, dimmed second line, the way menu item subtitles look from macOS 14.4.
+fn two_line_title(title: &str, subtitle: &str) -> Retained<NSMutableAttributedString> {
+    let styled = |text: &str, font: Retained<NSFont>, color: Retained<NSColor>| {
+        let keys = unsafe { [NSFontAttributeName, NSForegroundColorAttributeName] };
+        let values: [&AnyObject; 2] = [font.as_ref(), color.as_ref()];
+        let attributes = NSDictionary::from_slices(&keys, &values);
+        unsafe {
+            NSMutableAttributedString::initWithString_attributes(
+                NSMutableAttributedString::alloc(),
+                &NSString::from_str(text),
+                Some(&attributes),
+            )
+        }
+    };
+    let result = styled(title, NSFont::menuFontOfSize(0.0), NSColor::labelColor());
+    result.appendAttributedString(&styled(
+        &format!("\n{subtitle}"),
+        NSFont::menuFontOfSize(NSFont::smallSystemFontSize()),
+        NSColor::secondaryLabelColor(),
+    ));
+    result
 }

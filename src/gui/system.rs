@@ -9,7 +9,9 @@ use log::{debug, warn};
 use objc2::{runtime::Bool, sel, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{NSApplication, NSMenu, NSMenuItem, NSRunningApplication};
 use objc2_core_foundation::{CFBoolean, CFString};
-use objc2_foundation::{ns_string, NSBundle, NSError, NSString, NSUUID};
+use objc2_foundation::{
+    ns_string, NSBundle, NSError, NSOperatingSystemVersion, NSProcessInfo, NSString, NSUUID,
+};
 use objc2_security::SecTask;
 use objc2_service_management::{SMAppService, SMAppServiceStatus};
 use objc2_user_notifications::{
@@ -47,12 +49,32 @@ pub fn other_instance_running() -> bool {
         .any(|app| app.processIdentifier() != me)
 }
 
+/// For the AppKit and system features older releases lack.
+pub fn macos_at_least(major: isize, minor: isize) -> bool {
+    NSProcessInfo::processInfo().isOperatingSystemAtLeastVersion(NSOperatingSystemVersion {
+        majorVersion: major,
+        minorVersion: minor,
+        patchVersion: 0,
+    })
+}
+
+/// Login items need SMAppService, which arrived in macOS 13.
+pub fn can_open_at_login() -> bool {
+    macos_at_least(13, 0)
+}
+
 pub fn opens_at_login() -> bool {
+    if !can_open_at_login() {
+        return false;
+    }
     let status = unsafe { SMAppService::mainAppService().status() };
     status == SMAppServiceStatus::Enabled
 }
 
 pub fn set_opens_at_login(enabled: bool) -> Result<(), String> {
+    if !can_open_at_login() {
+        return Err("Opening at login needs macOS 13 or later.".into());
+    }
     let service = unsafe { SMAppService::mainAppService() };
     let result = unsafe {
         if enabled {
