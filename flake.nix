@@ -41,6 +41,19 @@
 
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
+        # The libc crate links libiconv, which the build takes from the store; Macs without Nix have it in /usr/lib.
+        useSystemLibraries = exe: ''
+          chmod u+w ${exe}
+          for lib in $(otool -L ${exe} | awk '/^\t\/nix\/store\// { print $1 }'); do
+            install_name_tool -change "$lib" "/usr/lib/$(basename "$lib")" ${exe}
+          done
+          if otool -L ${exe} | tail -n +2 | grep -q /nix/store/; then
+            echo "${exe} still links libraries from the store" >&2
+            exit 1
+          fi
+          codesign --force --sign - ${exe}
+        '';
+
         usbip-macos = craneLib.buildPackage (commonArgs // { inherit cargoArtifacts; });
 
         screenshot-server = craneLib.mkCargoDerivation (
@@ -50,7 +63,11 @@
             inherit (usbip-macos) version;
             inherit cargoArtifacts;
             buildPhaseCargoCommand = "cargo build --release --example screenshot_server";
-            installPhaseCommand = "install -D target/release/examples/screenshot_server $out/bin/screenshot-server";
+            nativeBuildInputs = [ pkgs.cctools pkgs.darwin.sigtool ];
+            installPhaseCommand = ''
+              install -D target/release/examples/screenshot_server $out/bin/screenshot-server
+              ${useSystemLibraries "$out/bin/screenshot-server"}
+            '';
           }
         );
 
@@ -64,22 +81,13 @@
             mkdir -p $contents/MacOS $contents/Resources
             exe=$contents/MacOS/usbip-macos
             cp ${usbip-macos}/bin/usbip-macos $exe
-            chmod u+w $exe
-            # The libc crate links libiconv, which the build takes from the store; Macs without Nix have it in /usr/lib.
-            for lib in $(otool -L $exe | awk '/^\t\/nix\/store\// { print $1 }'); do
-              install_name_tool -change "$lib" "/usr/lib/$(basename "$lib")" $exe
-            done
-            if otool -L $exe | tail -n +2 | grep -q /nix/store/; then
-              echo "$exe still links libraries from the store" >&2
-              exit 1
-            fi
+            ${useSystemLibraries "$exe"}
             # Info.plist promises macOS 14, the oldest release the app has been tested on.
             minos=$(otool -l $exe | awk '/LC_BUILD_VERSION/ { found = 1 } found && $1 == "minos" { print $2; exit }')
             if [ "$minos" != 14.0 ]; then
               echo "$exe needs macOS $minos, but Info.plist says 14.0" >&2
               exit 1
             fi
-            codesign --force --sign - $exe
             cp ${./packaging/AppIcon/Assets.car} $contents/Resources/Assets.car
             cp ${./packaging/AppIcon/AppIcon.icns} $contents/Resources/AppIcon.icns
             cp ${pkgs.replaceVars ./packaging/Info.plist { inherit (usbip-macos) version; }} $contents/Info.plist
