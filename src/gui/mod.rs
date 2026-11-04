@@ -371,11 +371,12 @@ impl App {
             menu.addItem(&self.item("Add Server…", Some(sel!(addServer:)), ""));
         }
         for server in &model.servers {
-            menu.addItem(&if system::macos_at_least(14, 0) {
+            let header = if system::macos_at_least(14, 0) {
                 NSMenuItem::sectionHeaderWithTitle(&NSString::from_str(&server.input), mtm)
             } else {
                 self.item(&server.input, None, "")
-            });
+            };
+            menu.addItem(&header);
             let mut busids: Vec<&str> = Vec::new();
             match &server.devices {
                 None => menu.addItem(&self.status_line("Loading…")),
