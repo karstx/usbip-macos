@@ -193,7 +193,15 @@ end repeat
 set frontmost to true
 EOF
   sleep 0.5
-  capture_window "eject-refused-$suffix"
+  # From the screen rather than the window server, so the alert's glass shows the desktop behind it.
+  screencapture -x -R "$(
+    ui <<'EOF'
+set {winX, winY} to position of window 1
+set {winW, winH} to size of window 1
+return (winX as text) & "," & winY & "," & winW & "," & winH
+EOF
+  )" "$OUT/eject-refused-$suffix.png"
+  echo "$OUT/eject-refused-$suffix.png"
   ui >/dev/null <<'EOF'
 click button 1 of window 1
 EOF
