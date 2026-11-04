@@ -137,6 +137,35 @@ fn whole_disks(uuid: &str) -> Vec<String> {
 
 type Reply = mpsc::Sender<Result<(), String>>;
 
+#[link(name = "DiskArbitration", kind = "framework")]
+extern "C" {
+    fn DADissenterGetStatus(dissenter: &DADissenter) -> i32;
+}
+
+const DA_RETURN_BUSY: u32 = 0xf8da_0002;
+const DA_RETURN_NOT_PERMITTED: u32 = 0xf8da_0008;
+const DA_RETURN_NOT_PRIVILEGED: u32 = 0xf8da_0009;
+const EBUSY: u32 = 16;
+
+/// Why DiskArbitration refused, for when the dissenter gave no reason of its own. A refused
+/// unmount usually means an open file, but macOS also refuses while the screen is locked.
+fn refusal(dissenter: &DADissenter) -> String {
+    if let Some(reason) = unsafe { dissenter.status_string() } {
+        return reason.to_string();
+    }
+    let status = unsafe { DADissenterGetStatus(dissenter) } as u32;
+    match status {
+        DA_RETURN_BUSY => IN_USE.into(),
+        DA_RETURN_NOT_PERMITTED | DA_RETURN_NOT_PRIVILEGED => {
+            "macOS did not allow it, which happens while the screen is locked".into()
+        }
+        _ if status & 0xff == EBUSY => IN_USE.into(),
+        _ => format!("DiskArbitration refused with status {status:#x}"),
+    }
+}
+
+const IN_USE: &str = "it is in use. Quit the apps using it and try again";
+
 unsafe extern "C-unwind" fn finished(
     _disk: NonNull<DADisk>,
     dissenter: *const DADissenter,
@@ -145,9 +174,7 @@ unsafe extern "C-unwind" fn finished(
     let reply = unsafe { Box::from_raw(context.cast::<Reply>()) };
     let result = match unsafe { dissenter.as_ref() } {
         None => Ok(()),
-        Some(dissenter) => Err(unsafe { dissenter.status_string() }
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "it is in use".into())),
+        Some(dissenter) => Err(refusal(dissenter)),
     };
     let _ = reply.send(result);
 }

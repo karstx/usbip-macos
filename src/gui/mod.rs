@@ -602,10 +602,7 @@ impl App {
             if let Some((label, e)) = failure {
                 outside_main_queue(move || {
                     with_app(|app| {
-                        app.show_alert(
-                            &format!("{label} is still in use"),
-                            &format!("{e}\n\nQuit the apps using it and try again."),
-                        )
+                        app.show_alert(&format!("{label} is still attached"), &format!("{e}."))
                     })
                 });
             }
