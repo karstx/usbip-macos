@@ -32,12 +32,18 @@ quit_app() {
 
 restore() {
   quit_app
+  dark_mode "$DARK_BEFORE"
   [ -z "$SERVER_PID" ] || kill "$SERVER_PID" 2>/dev/null || true
   defaults delete "$DOMAIN" >/dev/null 2>&1 || true
   defaults import "$DOMAIN" "$WORK/prefs.plist"
   rm -rf "$WORK"
 }
 
+dark_mode() {
+  osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $1"
+}
+
+DARK_BEFORE=$(osascript -e 'tell application "System Events" to tell appearance preferences to get dark mode')
 defaults export "$DOMAIN" "$WORK/prefs.plist"
 trap restore EXIT
 
@@ -86,11 +92,10 @@ capture_window() {
   echo "$OUT/$1.png"
 }
 
-for appearance in Light Dark; do
-  suffix=$(echo "$appearance" | tr '[:upper:]' '[:lower:]')
+for suffix in light dark; do
+  dark_mode "$([ "$suffix" = dark ] && echo true || echo false)"
 
   defaults delete "$DOMAIN" >/dev/null 2>&1 || true
-  defaults write "$DOMAIN" AppleInterfaceStyle "$appearance"
   defaults write "$DOMAIN" servers -array "$SERVER"
   defaults write "$DOMAIN" attached -array "1-1@$SERVER"
   defaults write "$DOMAIN" names -array \
@@ -121,6 +126,9 @@ EOF
   ui >/dev/null <<'EOF'
 set m to menu bar item 1 of menu bar 2
 click menu item "Settings…" of menu 1 of m
+repeat until exists window 1
+  delay 0.2
+end repeat
 EOF
 
   for tab in Servers General Log; do
