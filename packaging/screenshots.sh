@@ -2,6 +2,8 @@ DOMAIN=net.karstx.usbip
 PROCESS=usbip-macos
 APP=${1:?usage: screenshots <usbip.app> <output dir>}
 OUT=${2:?usage: screenshots <usbip.app> <output dir>}
+# A server already serving the screenshot devices; without one, the script serves them itself.
+SERVER=${SERVER:-}
 
 die() {
   echo "error: $*" >&2
@@ -12,7 +14,7 @@ die() {
 if pgrep -x "$PROCESS" >/dev/null; then
   die "usbip is running, quit it first"
 fi
-if /usr/sbin/lsof -iTCP:3240 -sTCP:LISTEN >/dev/null; then
+if [ -z "$SERVER" ] && /usr/sbin/lsof -iTCP:3240 -sTCP:LISTEN >/dev/null; then
   die "port 3240 is in use"
 fi
 
@@ -39,12 +41,15 @@ restore() {
 defaults export "$DOMAIN" "$WORK/prefs.plist"
 trap restore EXIT
 
-"$SCREENSHOT_SERVER" 127.0.0.1:3240 2>"$WORK/server.log" &
-SERVER_PID=$!
-for _ in $(seq 50); do
-  /usr/sbin/lsof -iTCP:3240 -sTCP:LISTEN >/dev/null && break
-  sleep 0.1
-done
+if [ -z "$SERVER" ]; then
+  SERVER=localhost
+  "$SCREENSHOT_SERVER" 127.0.0.1:3240 2>"$WORK/server.log" &
+  SERVER_PID=$!
+  for _ in $(seq 50); do
+    /usr/sbin/lsof -iTCP:3240 -sTCP:LISTEN >/dev/null && break
+    sleep 0.1
+  done
+fi
 
 ui() {
   osascript - "$@" <<EOF
@@ -86,8 +91,8 @@ for appearance in Light Dark; do
 
   defaults delete "$DOMAIN" >/dev/null 2>&1 || true
   defaults write "$DOMAIN" AppleInterfaceStyle "$appearance"
-  defaults write "$DOMAIN" servers -array localhost
-  defaults write "$DOMAIN" attached -array 1-1@localhost
+  defaults write "$DOMAIN" servers -array "$SERVER"
+  defaults write "$DOMAIN" attached -array "1-1@$SERVER"
   defaults write "$DOMAIN" names -array \
     "1209:7360=Flash Drive" "1209:7361=Keyboard" "1209:7362=Serial Adapter" "1209:7363=Dev Board"
 
