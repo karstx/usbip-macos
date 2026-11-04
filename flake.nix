@@ -39,7 +39,7 @@
           ];
           # The SDK's setup hook sets 14.0 and darwinMinVersionHook can only raise it, so this
           # lowers it after both have run.
-          preConfigure = "export MACOSX_DEPLOYMENT_TARGET=12.0";
+          preConfigure = "export MACOSX_DEPLOYMENT_TARGET=10.15";
         };
 
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
@@ -85,10 +85,11 @@
             exe=$contents/MacOS/usbip-macos
             cp ${usbip-macos}/bin/usbip-macos $exe
             ${useSystemLibraries "$exe"}
-            # Info.plist promises macOS 12, the oldest release the app has been tested on.
+            # Info.plist says 10.15, where the controller API arrived; the linker raises an arm64
+            # binary to 11.0, the first release on Apple silicon.
             minos=$(otool -l $exe | awk '/LC_BUILD_VERSION/ { found = 1 } found && $1 == "minos" { print $2; exit }')
-            if [ "$minos" != 12.0 ]; then
-              echo "$exe needs macOS $minos, but Info.plist says 12.0" >&2
+            if [ "$minos" != 11.0 ]; then
+              echo "$exe needs macOS $minos, expected 11.0" >&2
               exit 1
             fi
             cp ${./packaging/AppIcon/Assets.car} $contents/Resources/Assets.car
