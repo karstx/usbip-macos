@@ -140,21 +140,23 @@ EOF
 
 # The window ids screencapture needs come only from the window server, which AppleScript can't reach.
 window_id() {
-  osascript -l JavaScript - "$APP_PID" <<'EOF'
+  osascript -l JavaScript - "$1" "${2:-}" <<'EOF'
 ObjC.import("CoreGraphics");
-function run([pid]) {
+function run([pid, name]) {
   const windows = ObjC.deepUnwrap(ObjC.castRefToObject(
     $.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, $.kCGNullWindowID)));
-  const w = windows.find(w => w.kCGWindowOwnerPID == pid && w.kCGWindowLayer < 25);
+  const w = windows.find(w => w.kCGWindowOwnerPID == pid && w.kCGWindowLayer >= 0
+    && w.kCGWindowLayer < 25 && (!name || w.kCGWindowName == name));
   return w ? w.kCGWindowNumber : "";
 }
 EOF
 }
 
+# The frontmost window of the app, or of process $2 with title $3.
 capture_window() {
   local id=
   for _ in $(seq 20); do
-    id=$(window_id)
+    id=$(window_id "${2:-$APP_PID}" "${3:-}")
     [ -n "$id" ] && break
     sleep 0.25
   done
@@ -177,6 +179,13 @@ for suffix in light dark; do
   wait_for_menu_line "SanDisk Ultra"
   sleep 1
   capture_menu "menu-$suffix"
+
+  # The drive in Finder, to show macOS treats it like any other disk.
+  mkdir -p "$DRIVE/Photos" "$DRIVE/Firmware"
+  printf 'Spare Pico is in the lab drawer.\n' >"$DRIVE/Readme.txt"
+  open "$DRIVE"
+  capture_window "finder-drive-$suffix" "$(pgrep -x Finder)" "FLASH DRIVE"
+  osascript -e 'tell application "System Events" to tell process "Finder" to click (first button of window "FLASH DRIVE" whose subrole is "AXCloseButton")' >/dev/null
 
   # A file held open keeps the drive from ejecting, so detaching it is refused.
   echo "notes" >"$DRIVE/notes.txt"
