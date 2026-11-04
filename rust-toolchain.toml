@@ -9,3 +9,5 @@ components = [
   "clippy",
 ]
 profile = "minimal"
+# The app is universal: the Intel half is cross-compiled on Apple silicon.
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]

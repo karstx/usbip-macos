@@ -59,6 +59,15 @@
 
         usbip-macos = craneLib.buildPackage (commonArgs // { inherit cargoArtifacts; });
 
+        # The Intel half of the app, cross-compiled: there is no x86_64-darwin toolchain to build it natively.
+        intelArgs = commonArgs // {
+          CARGO_BUILD_TARGET = "x86_64-apple-darwin";
+          doCheck = false;
+        };
+        usbip-macos-intel = craneLib.buildPackage (
+          intelArgs // { cargoArtifacts = craneLib.buildDepsOnly intelArgs; }
+        );
+
         screenshot-server = craneLib.mkCargoDerivation (
           commonArgs
           // {
@@ -83,15 +92,18 @@
             contents=$out/Applications/usbip.app/Contents
             mkdir -p $contents/MacOS $contents/Resources
             exe=$contents/MacOS/usbip-macos
-            cp ${usbip-macos}/bin/usbip-macos $exe
+            lipo -create ${usbip-macos}/bin/usbip-macos ${usbip-macos-intel}/bin/usbip-macos -output $exe
             ${useSystemLibraries "$exe"}
-            # Info.plist says 10.15, where the controller API arrived; the linker raises an arm64
-            # binary to 11.0, the first release on Apple silicon.
-            minos=$(otool -l $exe | awk '/LC_BUILD_VERSION/ { found = 1 } found && $1 == "minos" { print $2; exit }')
-            if [ "$minos" != 11.0 ]; then
-              echo "$exe needs macOS $minos, expected 11.0" >&2
-              exit 1
-            fi
+            # Info.plist says 10.15, where the controller API arrived; the linker raises the arm64
+            # half to 11.0, the first release on Apple silicon.
+            for expected in arm64:11.0 x86_64:10.15; do
+              arch=''${expected%%:*}
+              minos=$(otool -arch $arch -l $exe | awk '/LC_BUILD_VERSION/ { found = 1 } found && $1 == "minos" { print $2; exit }')
+              if [ "$minos" != "''${expected#*:}" ]; then
+                echo "the $arch half of $exe needs macOS $minos, expected ''${expected#*:}" >&2
+                exit 1
+              fi
+            done
             cp ${./packaging/AppIcon/Assets.car} $contents/Resources/Assets.car
             cp ${./packaging/AppIcon/AppIcon.icns} $contents/Resources/AppIcon.icns
             cp ${pkgs.replaceVars ./packaging/Info.plist { inherit (usbip-macos) version; }} $contents/Info.plist

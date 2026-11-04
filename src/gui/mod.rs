@@ -151,10 +151,7 @@ fn status_icon(svg: &[u8], fallback: &NSString) -> Option<Retained<NSImage>> {
         .filter(|image| image.size().height > 0.0);
     let Some(image) = image else {
         warn!("can't read the status icon, using {fallback}");
-        return NSImage::imageWithSystemSymbolName_accessibilityDescription(
-            fallback,
-            Some(ns_string!("usbip")),
-        );
+        return symbol(fallback, ns_string!("usbip"));
     };
     let size = image.size();
     image.setSize(NSSize::new(
@@ -433,9 +430,9 @@ impl App {
             Some(State::Ejecting | State::Detaching) => self.item(&title, None, ""),
             _ => self.toggle_item(&title, key),
         };
-        if let Some(image) = NSImage::imageWithSystemSymbolName_accessibilityDescription(
+        if let Some(image) = symbol(
             &NSString::from_str(kind_symbol(kind)),
-            Some(&NSString::from_str(kind.label())),
+            &NSString::from_str(kind.label()),
         ) {
             item.setImage(Some(&image));
         }
@@ -917,4 +914,12 @@ fn two_line_title(title: &str, subtitle: &str) -> Retained<NSMutableAttributedSt
         NSColor::secondaryLabelColor(),
     ));
     result
+}
+
+/// An SF Symbol, or None on macOS 10.15, which predates them.
+fn symbol(name: &NSString, description: &NSString) -> Option<Retained<NSImage>> {
+    if !system::macos_at_least(11, 0) {
+        return None;
+    }
+    NSImage::imageWithSystemSymbolName_accessibilityDescription(name, Some(description))
 }
