@@ -58,27 +58,27 @@ EOF
 
 # The window ids screencapture needs come only from the window server, which AppleScript can't reach.
 window_id() {
-  osascript -l JavaScript - "$APP_PID" "$1" <<'EOF'
+  osascript -l JavaScript - "$APP_PID" <<'EOF'
 ObjC.import("CoreGraphics");
-function run([pid, layer]) {
+function run([pid]) {
   const windows = ObjC.deepUnwrap(ObjC.castRefToObject(
     $.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, $.kCGNullWindowID)));
-  const w = windows.find(w => w.kCGWindowOwnerPID == pid && w.kCGWindowLayer == layer);
+  const w = windows.find(w => w.kCGWindowOwnerPID == pid && w.kCGWindowLayer == 0);
   return w ? w.kCGWindowNumber : "";
 }
 EOF
 }
 
-capture() {
+capture_window() {
   local id=
   for _ in $(seq 20); do
-    id=$(window_id "$1")
+    id=$(window_id)
     [ -n "$id" ] && break
     sleep 0.25
   done
-  [ -n "$id" ] || die "no window on layer $1 to capture for $2"
-  screencapture -x -l "$id" "$OUT/$2.png"
-  echo "$OUT/$2.png"
+  [ -n "$id" ] || die "no window to capture for $1"
+  screencapture -x -l "$id" "$OUT/$1.png"
+  echo "$OUT/$1.png"
 }
 
 for appearance in Light Dark; do
@@ -100,22 +100,30 @@ for appearance in Light Dark; do
   [ -d "/Volumes/FLASH DRIVE" ] || die "the flash drive did not mount"
   sleep 1
 
-  ui <<'EOF'
+  # The menu is drawn outside the app's process, so it has no window of the app's to capture.
+  bounds=$(
+    ui <<'EOF'
 set m to menu bar item 1 of menu bar 2
 click m
+delay 0.5
+set {x, y} to position of menu 1 of m
+set {w, h} to size of menu 1 of m
+return (x as text) & "," & y & "," & w & "," & h
 EOF
-  capture 101 "menu-$suffix"
-  ui <<'EOF'
+  )
+  screencapture -x -R "$bounds" "$OUT/menu-$suffix.png"
+  echo "$OUT/menu-$suffix.png"
+  ui >/dev/null <<'EOF'
 set m to menu bar item 1 of menu bar 2
 click menu item "Settings…" of menu 1 of m
 EOF
 
   for tab in Servers General Log; do
-    ui "$tab" <<'EOF'
+    ui "$tab" >/dev/null <<'EOF'
 click radio button (item 1 of argv) of tab group 1 of window 1
 EOF
     sleep 0.5
-    capture 0 "settings-$(echo "$tab" | tr '[:upper:]' '[:lower:]')-$suffix"
+    capture_window "settings-$(echo "$tab" | tr '[:upper:]' '[:lower:]')-$suffix"
   done
 
   quit_app
