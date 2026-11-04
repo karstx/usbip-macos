@@ -1,4 +1,5 @@
-//! Looks for a newer release on GitHub.
+//! Looks for a newer release in the manifest usbip.karstx.net publishes alongside each signed
+//! build: `{"version": "1.2.0", "url": "<where to get it>"}`.
 
 use block2::RcBlock;
 use dispatch2::DispatchQueue;
@@ -9,7 +10,7 @@ use objc2_foundation::{
 };
 use usbip_macos::app::is_newer;
 
-const LATEST_RELEASE: &str = "https://api.github.com/repos/karstx/usbip-macos/releases/latest";
+const LATEST_RELEASE: &str = "https://usbip.karstx.net/latest.json";
 
 pub struct Release {
     pub version: String,
@@ -31,8 +32,8 @@ fn parse(data: &NSData) -> Option<Release> {
             .ok()?;
     let release = json.downcast_ref::<NSDictionary>()?;
     Some(Release {
-        version: string(release, ns_string!("tag_name"))?,
-        url: string(release, ns_string!("html_url"))?,
+        version: string(release, ns_string!("version"))?,
+        url: string(release, ns_string!("url"))?,
     })
 }
 
