@@ -24,6 +24,8 @@
     <string>public.app-category.utilities</string>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © Karolis Stasaitis</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
     <key>LSUIElement</key>
     <true/>
 </dict>

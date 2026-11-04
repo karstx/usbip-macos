@@ -73,6 +73,12 @@
               echo "$exe still links libraries from the store" >&2
               exit 1
             fi
+            # Info.plist promises macOS 14, the oldest release the app has been tested on.
+            minos=$(otool -l $exe | awk '/LC_BUILD_VERSION/ { found = 1 } found && $1 == "minos" { print $2; exit }')
+            if [ "$minos" != 14.0 ]; then
+              echo "$exe needs macOS $minos, but Info.plist says 14.0" >&2
+              exit 1
+            fi
             codesign --force --sign - $exe
             cp ${./packaging/AppIcon/Assets.car} $contents/Resources/Assets.car
             cp ${./packaging/AppIcon/AppIcon.icns} $contents/Resources/AppIcon.icns
