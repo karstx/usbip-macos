@@ -58,10 +58,22 @@
           pname = "usbip-macos-app";
           inherit (usbip-macos) version;
           dontUnpack = true;
+          nativeBuildInputs = [ pkgs.cctools pkgs.darwin.sigtool ];
           installPhase = ''
             contents=$out/Applications/usbip.app/Contents
             mkdir -p $contents/MacOS $contents/Resources
-            cp ${usbip-macos}/bin/usbip-macos $contents/MacOS/
+            exe=$contents/MacOS/usbip-macos
+            cp ${usbip-macos}/bin/usbip-macos $exe
+            chmod u+w $exe
+            # The libc crate links libiconv, which the build takes from the store; Macs without Nix have it in /usr/lib.
+            for lib in $(otool -L $exe | awk '/^\t\/nix\/store\// { print $1 }'); do
+              install_name_tool -change "$lib" "/usr/lib/$(basename "$lib")" $exe
+            done
+            if otool -L $exe | grep -q /nix/store/; then
+              echo "$exe still links libraries from the store" >&2
+              exit 1
+            fi
+            codesign --force --sign - $exe
             cp ${./packaging/AppIcon/Assets.car} $contents/Resources/Assets.car
             cp ${./packaging/AppIcon/AppIcon.icns} $contents/Resources/AppIcon.icns
             cp ${pkgs.replaceVars ./packaging/Info.plist { inherit (usbip-macos) version; }} $contents/Info.plist
