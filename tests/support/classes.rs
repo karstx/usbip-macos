@@ -240,9 +240,9 @@ pub struct Storage {
 }
 
 impl Storage {
-    pub fn new(bytes: usize) -> Self {
+    pub fn new(disk: Vec<u8>) -> Self {
         Self {
-            disk: Mutex::new(vec![0; bytes]),
+            disk: Mutex::new(disk),
             bot: Mutex::new(Bot {
                 phase: BotPhase::Command,
                 tag: 0,
@@ -425,7 +425,67 @@ impl Function for Storage {
     }
 }
 
-/// A high-speed Bulk-Only mass storage device backed by `bytes` of RAM.
+/// A FAT16 file system labelled `label` spanning the whole disk, with no partition table, so
+/// macOS mounts it instead of offering to initialize a blank disk. `bytes` must be between
+/// about 2 MiB and 2 GiB.
+pub fn fat16(bytes: usize, label: &str) -> Vec<u8> {
+    const RESERVED: usize = 1;
+    const FATS: usize = 2;
+    const ROOT_ENTRIES: usize = 512;
+    let sectors = bytes / STORAGE_BLOCK;
+    let mut per_cluster = 1;
+    while sectors / per_cluster > 65_000 {
+        per_cluster *= 2;
+    }
+    let root_sectors = ROOT_ENTRIES * 32 / STORAGE_BLOCK;
+    // Sized for every cluster the disk could hold, so it never comes up short.
+    let fat_sectors = (sectors / per_cluster + 2) * 2 / STORAGE_BLOCK + 1;
+    let clusters = (sectors - RESERVED - FATS * fat_sectors - root_sectors) / per_cluster;
+    assert!(
+        (4085..65525).contains(&clusters),
+        "{bytes} bytes is not a FAT16 size"
+    );
+
+    let mut label_bytes = [b' '; 11];
+    for (dst, src) in label_bytes.iter_mut().zip(label.to_uppercase().bytes()) {
+        *dst = src;
+    }
+    let mut disk = vec![0; sectors * STORAGE_BLOCK];
+    let boot = &mut disk[..STORAGE_BLOCK];
+    boot[0..3].copy_from_slice(&[0xeb, 0x3c, 0x90]);
+    boot[3..11].copy_from_slice(b"MSDOS5.0");
+    boot[11..13].copy_from_slice(&(STORAGE_BLOCK as u16).to_le_bytes());
+    boot[13] = per_cluster as u8;
+    boot[14..16].copy_from_slice(&(RESERVED as u16).to_le_bytes());
+    boot[16] = FATS as u8;
+    boot[17..19].copy_from_slice(&(ROOT_ENTRIES as u16).to_le_bytes());
+    match u16::try_from(sectors) {
+        Ok(small) => boot[19..21].copy_from_slice(&small.to_le_bytes()),
+        Err(_) => boot[32..36].copy_from_slice(&(sectors as u32).to_le_bytes()),
+    }
+    boot[21] = 0xf8;
+    boot[22..24].copy_from_slice(&(fat_sectors as u16).to_le_bytes());
+    boot[24..26].copy_from_slice(&32u16.to_le_bytes());
+    boot[26..28].copy_from_slice(&64u16.to_le_bytes());
+    boot[36] = 0x80;
+    boot[38] = 0x29;
+    boot[39..43].copy_from_slice(&0x1209_735cu32.to_le_bytes());
+    boot[43..54].copy_from_slice(&label_bytes);
+    boot[54..62].copy_from_slice(b"FAT16   ");
+    boot[510..512].copy_from_slice(&[0x55, 0xaa]);
+
+    for fat in 0..FATS {
+        let start = (RESERVED + fat * fat_sectors) * STORAGE_BLOCK;
+        disk[start..start + 4].copy_from_slice(&[0xf8, 0xff, 0xff, 0xff]);
+    }
+    let root = (RESERVED + FATS * fat_sectors) * STORAGE_BLOCK;
+    disk[root..root + 11].copy_from_slice(&label_bytes);
+    disk[root + 11] = 0x08;
+    disk
+}
+
+/// A high-speed Bulk-Only mass storage device backed by `bytes` of RAM, formatted as an empty
+/// FAT16 volume.
 pub fn storage(bytes: usize) -> StdDevice<Storage> {
     let mut body = interface(0, 0, 2, [8, 6, 0x50]);
     body.extend(endpoint(0x01, 2, 512, 0));
@@ -437,6 +497,6 @@ pub fn storage(bytes: usize) -> StdDevice<Storage> {
             strings: vec!["usbip-macos tests".into(), "Disk".into(), "DISK1".into()],
             ..Default::default()
         },
-        Storage::new(bytes),
+        Storage::new(fat16(bytes, "USBIP TEST")),
     )
 }
