@@ -4,6 +4,9 @@ APP=${1:?usage: screenshots <usbip.app> <output dir>}
 OUT=${2:?usage: screenshots <usbip.app> <output dir>}
 # The name the menu shows for the server, which must resolve to this Mac.
 SERVER=${SERVER:-localhost}
+# Desktop pictures to switch to for each appearance, for a disposable screenshot machine.
+WALLPAPER_LIGHT=${WALLPAPER_LIGHT:-}
+WALLPAPER_DARK=${WALLPAPER_DARK:-}
 DRIVE="/Volumes/FLASH DRIVE"
 
 die() {
@@ -162,6 +165,10 @@ capture_window() {
 
 for suffix in light dark; do
   dark_mode "$([ "$suffix" = dark ] && echo true || echo false)"
+  wallpaper=$([ "$suffix" = dark ] && echo "$WALLPAPER_DARK" || echo "$WALLPAPER_LIGHT")
+  if [ -n "$wallpaper" ]; then
+    osascript -e "tell application \"System Events\" to tell every desktop to set picture to \"$wallpaper\""
+  fi
   start_server
 
   launch "1-1@$SERVER"
