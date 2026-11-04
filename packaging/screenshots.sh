@@ -1,0 +1,122 @@
+DOMAIN=net.karstx.usbip
+PROCESS=usbip-macos
+APP=${1:?usage: screenshots <usbip.app> <output dir>}
+OUT=${2:?usage: screenshots <usbip.app> <output dir>}
+
+die() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+[ -d "$APP" ] || die "$APP is not an app bundle"
+if pgrep -x "$PROCESS" >/dev/null; then
+  die "usbip is running, quit it first"
+fi
+if /usr/sbin/lsof -iTCP:3240 -sTCP:LISTEN >/dev/null; then
+  die "port 3240 is in use"
+fi
+
+mkdir -p "$OUT"
+WORK=$(mktemp -d)
+SERVER_PID=
+APP_PID=
+
+quit_app() {
+  [ -n "$APP_PID" ] || return 0
+  kill -TERM "$APP_PID" 2>/dev/null || true
+  while kill -0 "$APP_PID" 2>/dev/null; do sleep 0.5; done
+  APP_PID=
+}
+
+restore() {
+  quit_app
+  [ -z "$SERVER_PID" ] || kill "$SERVER_PID" 2>/dev/null || true
+  defaults delete "$DOMAIN" >/dev/null 2>&1 || true
+  defaults import "$DOMAIN" "$WORK/prefs.plist"
+  rm -rf "$WORK"
+}
+
+defaults export "$DOMAIN" "$WORK/prefs.plist"
+trap restore EXIT
+
+"$SCREENSHOT_SERVER" 127.0.0.1:3240 2>"$WORK/server.log" &
+SERVER_PID=$!
+for _ in $(seq 50); do
+  /usr/sbin/lsof -iTCP:3240 -sTCP:LISTEN >/dev/null && break
+  sleep 0.1
+done
+
+ui() {
+  osascript - "$@" <<EOF
+on run argv
+  tell application "System Events" to tell process "$PROCESS"
+    $(cat)
+  end tell
+end run
+EOF
+}
+
+# The window ids screencapture needs come only from the window server, which AppleScript can't reach.
+window_id() {
+  osascript -l JavaScript - "$APP_PID" "$1" <<'EOF'
+ObjC.import("CoreGraphics");
+function run([pid, layer]) {
+  const windows = ObjC.deepUnwrap(ObjC.castRefToObject(
+    $.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, $.kCGNullWindowID)));
+  const w = windows.find(w => w.kCGWindowOwnerPID == pid && w.kCGWindowLayer == layer);
+  return w ? w.kCGWindowNumber : "";
+}
+EOF
+}
+
+capture() {
+  local id=
+  for _ in $(seq 20); do
+    id=$(window_id "$1")
+    [ -n "$id" ] && break
+    sleep 0.25
+  done
+  [ -n "$id" ] || die "no window on layer $1 to capture for $2"
+  screencapture -x -l "$id" "$OUT/$2.png"
+  echo "$OUT/$2.png"
+}
+
+for appearance in Light Dark; do
+  suffix=$(echo "$appearance" | tr '[:upper:]' '[:lower:]')
+
+  defaults delete "$DOMAIN" >/dev/null 2>&1 || true
+  defaults write "$DOMAIN" AppleInterfaceStyle "$appearance"
+  defaults write "$DOMAIN" servers -array localhost
+  defaults write "$DOMAIN" attached -array 1-1@localhost
+  defaults write "$DOMAIN" names -array \
+    "1209:7360=Flash Drive" "1209:7361=Keyboard" "1209:7362=Serial Adapter" "1209:7363=Dev Board"
+
+  open -n "$APP"
+  for _ in $(seq 100); do
+    APP_PID=$(pgrep -nx "$PROCESS" || true)
+    [ -n "$APP_PID" ] && [ -d "/Volumes/FLASH DRIVE" ] && break
+    sleep 0.25
+  done
+  [ -d "/Volumes/FLASH DRIVE" ] || die "the flash drive did not mount"
+  sleep 1
+
+  ui <<'EOF'
+set m to menu bar item 1 of menu bar 2
+click m
+EOF
+  capture 101 "menu-$suffix"
+  ui <<'EOF'
+set m to menu bar item 1 of menu bar 2
+click menu item "Settings…" of menu 1 of m
+EOF
+
+  for tab in Servers General Log; do
+    ui "$tab" <<'EOF'
+click radio button (item 1 of argv) of tab group 1 of window 1
+EOF
+    sleep 0.5
+    capture 0 "settings-$(echo "$tab" | tr '[:upper:]' '[:lower:]')-$suffix"
+  done
+
+  quit_app
+done

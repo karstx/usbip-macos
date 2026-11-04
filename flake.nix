@@ -39,10 +39,18 @@
           ];
         };
 
-        usbip-macos = craneLib.buildPackage (
+        cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+
+        usbip-macos = craneLib.buildPackage (commonArgs // { inherit cargoArtifacts; });
+
+        screenshot-server = craneLib.mkCargoDerivation (
           commonArgs
           // {
-            cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+            pname = "usbip-screenshot-server";
+            inherit (usbip-macos) version;
+            inherit cargoArtifacts;
+            buildPhaseCargoCommand = "cargo build --release --example screenshot_server";
+            installPhaseCommand = "install -D target/release/examples/screenshot_server $out/bin/screenshot-server";
           }
         );
 
@@ -69,6 +77,12 @@
           };
           text = builtins.readFile ./packaging/package-app.sh;
         };
+
+        screenshots = pkgs.writeShellApplication {
+          name = "screenshots";
+          runtimeEnv.SCREENSHOT_SERVER = "${screenshot-server}/bin/screenshot-server";
+          text = builtins.readFile ./packaging/screenshots.sh;
+        };
       in
       {
         formatter = pkgs.nixpkgs-fmt;
@@ -87,6 +101,10 @@
           package = {
             type = "app";
             program = "${package-app}/bin/package-app";
+          };
+          screenshots = {
+            type = "app";
+            program = "${screenshots}/bin/screenshots";
           };
         };
 
