@@ -80,6 +80,15 @@ fi
 "$CODESIGN" "${SIGN_ARGS[@]}" "$TARGET"
 "$CODESIGN" --verify --strict --verbose=2 "$TARGET"
 
+# The app gets its own ticket before it goes into the dmg: once it is dragged out of the dmg,
+# the dmg's ticket no longer travels with it, and without one of its own the first launch
+# needs to reach Apple to check it.
+if [ ${#NOTARY_ARGS[@]} -gt 0 ]; then
+  "$DITTO" -c -k --keepParent "$TARGET" "$WORK/$NAME.zip"
+  "$XCRUN" notarytool submit "$WORK/$NAME.zip" "${NOTARY_ARGS[@]}" --wait
+  "$XCRUN" stapler staple "$TARGET"
+fi
+
 mkdir "$WORK/dmg"
 "$DITTO" "$TARGET" "$WORK/dmg/$NAME.app"
 ln -s /Applications "$WORK/dmg/Applications"
