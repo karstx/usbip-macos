@@ -69,7 +69,7 @@
             for lib in $(otool -L $exe | awk '/^\t\/nix\/store\// { print $1 }'); do
               install_name_tool -change "$lib" "/usr/lib/$(basename "$lib")" $exe
             done
-            if otool -L $exe | grep -q /nix/store/; then
+            if otool -L $exe | tail -n +2 | grep -q /nix/store/; then
               echo "$exe still links libraries from the store" >&2
               exit 1
             fi
