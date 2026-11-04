@@ -96,7 +96,7 @@ launch() {
 
 wait_for_menu_line() {
   for _ in $(seq 60); do
-    ui "$1" <<'EOF' | grep -q true && return
+    ui "$1" 2>/dev/null <<'EOF' | grep -q true && return
 set m to menu bar item 1 of menu bar 2
 click m
 delay 0.3
@@ -190,6 +190,7 @@ EOF
 click button 1 of window 1
 EOF
   kill "$HOLDER_PID"
+  wait "$HOLDER_PID" 2>/dev/null || true
   HOLDER_PID=
 
   ui >/dev/null <<'EOF'
