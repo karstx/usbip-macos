@@ -36,8 +36,9 @@
 
           buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
             pkgs.apple-sdk
-            (pkgs.darwinMinVersionHook "12.0")
           ];
+          # Lower than the SDK's default, which darwinMinVersionHook can only raise.
+          MACOSX_DEPLOYMENT_TARGET = "12.0";
         };
 
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
