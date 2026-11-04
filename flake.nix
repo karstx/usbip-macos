@@ -121,6 +121,7 @@
           default = usbip-macos;
         } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
           app = usbip-macos-app;
+          inherit screenshot-server;
         };
 
         apps = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
