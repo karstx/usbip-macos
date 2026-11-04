@@ -118,15 +118,14 @@ capture_menu() {
 set m to menu bar item 1 of menu bar 2
 click m
 delay 0.5
-set {ix, iy} to position of m
-set {mx, my} to position of menu 1 of m
-set {mw, mh} to size of menu 1 of m
-set {sw, sh} to size of menu bar 1
-set l to mx
-if ix < l then set l to ix
-set l to l - 160
-set b to my + mh + 40
-return (l as text) & ",0," & (sw - l) & "," & b
+set {itemX, itemY} to position of m
+set {menuX, menuY} to position of menu 1 of m
+set {menuW, menuH} to size of menu 1 of m
+set {screenW, screenH} to size of menu bar 1
+set leftX to menuX
+if itemX < leftX then set leftX to itemX
+set leftX to leftX - 160
+return (leftX as text) & ",0," & (screenW - leftX) & "," & (menuY + menuH + 40)
 EOF
   )
   screencapture -x -R "$bounds" "$OUT/$1.png"
@@ -219,8 +218,8 @@ EOF
   sleep 1.5
   screencapture -x -R "$(
     ui <<'EOF'
-set {sw, sh} to size of menu bar 1
-return ((sw - 420) as text) & ",0,420,150"
+set {screenW, screenH} to size of menu bar 1
+return ((screenW - 420) as text) & ",0,420,150"
 EOF
   )" "$OUT/disconnected-notification-$suffix.png"
   echo "$OUT/disconnected-notification-$suffix.png"
