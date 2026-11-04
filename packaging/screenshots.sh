@@ -190,6 +190,7 @@ click (first menu item of menu 1 of m whose name starts with "SanDisk Ultra")
 repeat until exists window 1
   delay 0.2
 end repeat
+set frontmost to true
 EOF
   sleep 0.5
   capture_window "eject-refused-$suffix"
