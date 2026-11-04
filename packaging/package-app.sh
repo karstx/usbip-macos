@@ -3,6 +3,14 @@ HCI_ENTITLEMENT=com.apple.developer.usb.host-controller-interface
 IDENTITY=${IDENTITY:--}
 PROFILE=${PROFILE:-}
 NOTARY_PROFILE=${NOTARY_PROFILE:-}
+# Notarize with an App Store Connect API key instead of a keychain profile: the .p8 file, its
+# key id and the issuer id. Suits a headless build that has no keychain profile to look up.
+NOTARY_KEY=${NOTARY_KEY:-}
+NOTARY_KEY_ID=${NOTARY_KEY_ID:-}
+NOTARY_ISSUER=${NOTARY_ISSUER:-}
+# Look IDENTITY up in this keychain only, e.g. a dedicated signing keychain on a machine whose
+# login keychain is locked or has several identities with the same name.
+KEYCHAIN=${KEYCHAIN:-}
 OUT=${1:-.}
 
 CODESIGN=/usr/bin/codesign
@@ -18,8 +26,15 @@ die() {
   exit 1
 }
 
-if [ -n "$NOTARY_PROFILE" ] && [ "$IDENTITY" = "-" ]; then
-  die "NOTARY_PROFILE needs a Developer ID IDENTITY"
+NOTARY_ARGS=()
+if [ -n "$NOTARY_KEY" ]; then
+  [ -n "$NOTARY_KEY_ID" ] && [ -n "$NOTARY_ISSUER" ] || die "NOTARY_KEY needs NOTARY_KEY_ID and NOTARY_ISSUER"
+  NOTARY_ARGS=(--key "$NOTARY_KEY" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER")
+elif [ -n "$NOTARY_PROFILE" ]; then
+  NOTARY_ARGS=(--keychain-profile "$NOTARY_PROFILE")
+fi
+if [ ${#NOTARY_ARGS[@]} -gt 0 ] && [ "$IDENTITY" = "-" ]; then
+  die "notarizing needs a Developer ID IDENTITY"
 fi
 
 NAME=$(basename "$APP" .app)
@@ -33,7 +48,12 @@ mkdir -p "$OUT"
 cp -R "$APP" "$TARGET"
 chmod -R u+w "$TARGET"
 
-SIGN_ARGS=(--force --sign "$IDENTITY")
+KEYCHAIN_ARGS=()
+if [ -n "$KEYCHAIN" ]; then
+  KEYCHAIN_ARGS=(--keychain "$KEYCHAIN")
+fi
+
+SIGN_ARGS=(--force --sign "$IDENTITY" "${KEYCHAIN_ARGS[@]}")
 if [ "$IDENTITY" != "-" ]; then
   SIGN_ARGS+=(--options runtime --timestamp)
 fi
@@ -75,10 +95,10 @@ else
 fi
 
 if [ "$IDENTITY" != "-" ]; then
-  "$CODESIGN" --force --sign "$IDENTITY" --timestamp "$DMG"
+  "$CODESIGN" --force --sign "$IDENTITY" "${KEYCHAIN_ARGS[@]}" --timestamp "$DMG"
 fi
-if [ -n "$NOTARY_PROFILE" ]; then
-  "$XCRUN" notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+if [ ${#NOTARY_ARGS[@]} -gt 0 ]; then
+  "$XCRUN" notarytool submit "$DMG" "${NOTARY_ARGS[@]}" --wait
   "$XCRUN" stapler staple "$DMG"
 fi
 
